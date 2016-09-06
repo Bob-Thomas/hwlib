@@ -21,6 +21,8 @@
 #include "hwlib-dac.hpp"
 #include "hwlib-console.hpp"
 #include "hwlib-graphics.hpp"
+#include "hwlib-font-default-8x8.hpp"
+#include "hwlib-font-default-16x16.hpp"
 #include "hwlib-wait.hpp"
 #include "hwlib-ostream.hpp"
 #include "hwlib-panic.hpp"
@@ -32,6 +34,7 @@
 #include "hwlib-hd44780.hpp"
 #include "hwlib-glcd-5510.hpp"
 #include "hwlib-glcd-oled.hpp"
+#include "hwlib-matrix-keypad.hpp"
 #include "hwlib-demo.hpp"
 
 #endif // HWLIB_ALL_H

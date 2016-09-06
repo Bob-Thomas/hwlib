@@ -14,19 +14,25 @@
 #define HWLIB_H
 
 #ifdef BMPTK_TARGET_arduino_due
-   #include "hwlib-due.hpp"
+   #define HWLIB_INCLUDE_FILE "hwlib-due.hpp"
 #endif
 
 #ifdef BMPTK_TARGET_db103
-   #include "hwlib-db103.hpp"
+   #define HWLIB_INCLUDE_FILE "hwlib-db103.hpp"
 #endif
 
 #ifdef BMPTK_TARGET_arduino_uno
-   #include "hwlib-uno.hpp"
+   #define HWLIB_INCLUDE_FILE "hwlib-uno.hpp"
 #endif
 
 #ifndef BMPTK_TARGET
-   #include "hwlib-all.hpp"
+   #define HWLIB_INCLUDE_FILE "hwlib-all.hpp"
 #endif
+
+#ifndef HWLIB_INCLUDE_FILE
+   #error hwlib error: no valid target
+#endif
+
+#include HWLIB_INCLUDE_FILE
 
 #endif // HWLIB_ALL_H

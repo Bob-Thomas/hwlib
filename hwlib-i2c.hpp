@@ -133,7 +133,7 @@ private:
    pin_oc & scl, & sda;
    
    void wait_half_period(){
-      wait_us( 5 );      
+      wait_us( 1 );      
    }
    
    void write_bit( bool x ){

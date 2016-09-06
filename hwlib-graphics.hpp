@@ -41,9 +41,17 @@ public:
    /// subtract two locations
    constexpr location operator-( const location rhs ) const {
       return location{ x - rhs.x, y - rhs.y };      
-   }      
+   } 
    
 }; 
+
+/// print a location
+ostream & operator<<( ostream & lhs, location rhs );
+#ifdef HWLIB_ONCE
+ostream & operator<<( ostream & lhs, location rhs ){
+   return lhs << "[" << rhs.x << ":" << rhs.y << "]";
+}
+#endif
 
 /// graphics color
 //
@@ -166,8 +174,84 @@ constexpr color salmon      = color( 0xFA8072 );
 //@}
 
 // ==========================================================================
+
+/// an image
+//
+/// An image is a rectangular set of pixel values (colors).
+class image {
+private:
+
+   virtual color get_implementation( location pos ) const = 0;
+
+public:
    
-/// a graphics windows
+   /// the size of the image
+   //
+   /// This is the size of the image: the number of pixels
+   /// in the x and y direction.
+   // wovo: should be const, but that conflicts with the 16x16 font
+   location size;
+   
+   /// construct an image by specifying its size.
+   constexpr image( location size)
+      : size{ size }
+   {}   
+   
+   color operator[]( location pos ) const {
+      return (  
+               ( pos.x >= 0 ) && ( pos.x < size.x ) 
+            && ( pos.y >= 0 ) && ( pos.y < size.y ) 
+         )
+            ? get_implementation( pos )
+            : black;       
+   }
+   
+};
+
+// contains its data
+class image_8x8 : public image {
+private:   
+   unsigned char data[ 8 ];
+   
+   color get_implementation( location pos ) const override {
+      return
+         ( data[ pos.y ] & ( 0x01 << pos.x )) == 0         
+            ? white
+            : black;
+   }         
+      
+public:   
+   
+   constexpr image_8x8( 
+      unsigned char d0, unsigned char d1, 
+      unsigned char d2, unsigned char d3, 
+      unsigned char d4, unsigned char d5, 
+      unsigned char d6, unsigned char d7
+   ): 
+      image( location( 8, 8 ) ),
+      data{ d0, d1, d2, d3, d4, d5, d6, d7 }
+   {}   
+};  
+
+
+// ==========================================================================
+
+/// a font
+//
+/// A font provides an image for each supported character
+class font {    
+public:
+
+   /// get image for a character
+   //
+   /// This function returns the image for the specified character.
+   virtual const image & operator[]( char c ) const = 0;
+};
+
+   
+// ==========================================================================
+   
+/// a graphics window
 //
 /// This class abstracts the interface to a graphic window.
 class window {
@@ -204,7 +288,7 @@ public:
    
    /// write a pixel
    //
-   /// This function writes a the color col to the pixel at location loc.
+   /// This function writes the color col to the pixel at location loc.
    /// If either the color is transparent, or the location is outside the window 
    /// the call has no effect. When no locor is specificied, the window's
    /// foreground color is used.
@@ -215,6 +299,19 @@ public:
       ){
          write_implementation( pos, col );
       }   
+   }
+   
+   /// write a rectangle of pixels
+   //
+   /// This function writes a rectangle of pixels, as specified by img,
+   /// at location pos, 
+   void write( location pos, const image & img ){
+      for( int x = 0; x < img.size.x; ++x ){
+         for( int y = 0; y < img.size.y; ++y ){
+            auto loc = hwlib::location( x, y );
+            write( pos + loc, img[ loc ] );
+         }
+      }  
    }
    
    #ifndef DOXYGEN // hide from doxygen
@@ -238,7 +335,79 @@ public:
    }
 };
 
+// ==========================================================================
 
+class window_ostream : public ostream {
+private:
+   window & w;
+   const font &f;
+   location cursor;
+   int goto_xy;
+public:   
+   window_ostream( window & w, const font &f ):
+      w( w ), f( f ), cursor( 0,0 ), goto_xy( 0 )
+   {}   
+   
+   void putc( char c ) override {
+      const image & im = f[ c ];
+      
+      switch( goto_xy ){
+       
+         case 0 :
+            break;
+
+         case 1 :        
+            cursor.x = 10 * ( c - '0' );
+            ++goto_xy;
+            return;
+            
+         case 2 :        
+            cursor.x += c - '0' ;
+            cursor.x *= im.size.x;
+            ++goto_xy;
+            return;
+            
+         case 3 :        
+            cursor.y = 10 * ( c - '0' );
+            ++goto_xy;
+            return;
+            
+         case 4 :           
+            cursor.y += c - '0' ;
+            cursor.y *= im.size.y;
+            goto_xy = 0;           
+            return;
+
+      }
+      
+      switch( c ){
+         
+         case '\t':
+            goto_xy = 1;
+            break;
+         
+         case '\v':
+            cursor = location( 0, 0 );
+            break;
+         
+         case '\f':
+            cursor = location( 0, 0 );
+            w.clear();
+            break; 
+         
+         case '\n':
+            cursor = location( 0, cursor.y + im.size.y );
+            break;
+         
+         default:
+            w.write( cursor, im );
+            cursor.x += im.size.x;            
+            break;           
+      }            
+   }   
+};
+
+   
 // ==========================================================================
 
 /// a window_part (subwindow of a larger window)

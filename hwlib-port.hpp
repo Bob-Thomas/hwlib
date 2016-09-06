@@ -191,7 +191,7 @@ public:
    
    uint_fast8_t get() override {
       uint_fast8_t result = 0;
-      for( uint_fast8_t i = _number_of_pins -1; i >=0; --i ){
+      for( int_fast8_t i = _number_of_pins -1; i >=0; --i ){  
          result = result << 1;
          if( pins[ i ]->get() ){
             result |= 0x01;            
@@ -279,44 +279,9 @@ class port_in_out {
 
 };
 
-// ==========================================================================
-//
-// oc port
-//
-// ==========================================================================
-
-/// open-collector interface
-//
-/// This is the interface of an open-collector port.
-class port_oc {
- public:
-
-   /// get number of pins
-   //
-   /// This function returns the number of pins in the port.
-   virtual uint_fast8_t number_of_pins() = 0;   
-   
-   /// read from the port
-   //
-   /// This function reads and returns the pins that are part of the port.
-   /// The lowest bit of the result reflects the first pin of the port, etc.
-   ///
-   /// Pins that have been written as 0 will very likley read as 0 too.
-   /// To read the external input to a pin, 
-   /// the pin must first be written as 1.
-   virtual uint_fast8_t get() = 0;         
-
-   /// write to the port
-   //
-   /// This function writes to the pins that are part of the port.
-   /// The lowest bit is written to the first pin of the port, etc.  
-   virtual void set( uint_fast8_t x ) = 0;         
-
-};
-
 /// input/output port from input/output pins
 //
-/// This class implements an input-only port made from port up to 8 pins.
+/// This class implements an input/output port made from port up to 8 pins.
 class port_in_out_from_pins : public port_in_out {
 private:
    
@@ -368,7 +333,7 @@ public:
    
    uint_fast8_t get() override {
       uint_fast8_t result = 0;
-      for( uint_fast8_t i = _number_of_pins -1; i >=0; --i ){
+      for( int_fast8_t i = _number_of_pins -1; i >=0; --i ){
          result = result << 1;
          if( pins[ i ]->get() ){
             result |= 0x01;            
@@ -385,6 +350,108 @@ public:
    }   
 
 };
+
+
+// ==========================================================================
+//
+// oc port
+//
+// ==========================================================================
+
+/// open-collector interface
+//
+/// This is the interface of an open-collector port.
+class port_oc {
+ public:
+
+   /// get number of pins
+   //
+   /// This function returns the number of pins in the port.
+   virtual uint_fast8_t number_of_pins() = 0;   
+   
+   /// read from the port
+   //
+   /// This function reads and returns the pins that are part of the port.
+   /// The lowest bit of the result reflects the first pin of the port, etc.
+   ///
+   /// Pins that have been written as 0 will very likley read as 0 too.
+   /// To read the external input to a pin, 
+   /// the pin must first be written as 1.
+   virtual uint_fast8_t get() = 0;         
+
+   /// write to the port
+   //
+   /// This function writes to the pins that are part of the port.
+   /// The lowest bit is written to the first pin of the port, etc.  
+   virtual void set( uint_fast8_t x ) = 0;         
+
+};
+
+/// opne_collector port from open_collector pins
+//
+/// This class implements an open_collector port made from port up to 8 pins.
+class port_oc_from_pins : public port_oc {
+private:
+   
+   uint_fast8_t _number_of_pins;  
+
+   // 8 must match the number of parameters of the constructor
+   pin_oc * pins[ 8 ];   
+   
+public:
+
+   /// construct a port_oc from up to 8 pin_oc
+   //
+   /// This constructor creates a port_oc from up to 8 pin_oc pins.
+   /// The first pin is the lowest pin in the port, etc.
+   port_oc_from_pins(
+      pin_oc & p0 = pin_oc_dummy,
+      pin_oc & p1 = pin_oc_dummy,
+      pin_oc & p2 = pin_oc_dummy,
+      pin_oc & p3 = pin_oc_dummy,
+      pin_oc & p4 = pin_oc_dummy,
+      pin_oc & p5 = pin_oc_dummy,
+      pin_oc & p6 = pin_oc_dummy,
+      pin_oc & p7 = pin_oc_dummy
+   ):
+      pins{ &p0, &p1, &p2, &p3, &p4, &p5, &p6, &p7 }
+   {
+      for( _number_of_pins = 0; _number_of_pins < 8; ++_number_of_pins ){
+         if( pins[ _number_of_pins ] == & pin_oc_dummy ){
+             break;
+         }            
+      }
+   }            
+
+   uint_fast8_t number_of_pins() override {
+      return _number_of_pins;               
+   }   
+   
+   uint_fast8_t get() override {
+      uint_fast8_t result = 0;
+      for( int_fast8_t i = _number_of_pins -1; i >=0; --i ){
+         result = result << 1;
+         if( pins[ i ]->get() ){
+            result |= 0x01;            
+         }
+       }         
+       return result;
+   }
+   
+   void set( uint_fast8_t x ) override {
+      for( uint_fast8_t i = 0; i < _number_of_pins; i++ ){
+         pins[ i ]->set( ( x & 0x01 ) != 0 );
+         x = x >> 1;
+      }         
+   }   
+
+};
+
+// ==========================================================================
+//
+// invert a port
+//
+// ==========================================================================
 
 /// invert an input/input port
 //

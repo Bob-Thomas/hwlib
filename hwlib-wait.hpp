@@ -43,6 +43,15 @@ void wait_us( int_fast32_t n );
 /// Note that there is no guaranteed upper bound on the delay time.
 void wait_ms( int_fast32_t n );
 
+/// current time in microseconds.
+//
+/// A call of this function returns the number of microseconds since
+/// some arbitrary moment 
+/// (in most implementations the first call to this function).
+long long int now_us();
+
+long long int now_ticks();
+
 }; // namespace hwlib
 
 #endif // HWLIB_WAIT_H

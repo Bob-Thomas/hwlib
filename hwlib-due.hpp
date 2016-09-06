@@ -18,6 +18,7 @@
 
 #include "hwlib-all.hpp"
 #include "sam.h"
+#include "hwlib-due-system-sam3xa.hpp"
 
 /// hwlib implementation for the Arduino Due
 //
@@ -85,7 +86,9 @@ struct pin_info_type {
 
 const HWLIB_WEAK pin_info_type & pin_info( pins name ){
    
-   static const pin_info_type pin_info_array[ (int) pins::SIZE_THIS_IS_NOT_A_PIN ] = {
+   static const pin_info_type pin_info_array[ 
+      static_cast< uint_fast8_t>( pins::SIZE_THIS_IS_NOT_A_PIN )
+   ] = {
       { 0,  8 },  // d0
       { 0,  9 },  // d1
       { 1, 25 },  // d2
@@ -100,7 +103,7 @@ const HWLIB_WEAK pin_info_type & pin_info( pins name ){
    
       { 3,  7 },  // d11
       { 3,  8 },  // d12
-      { 1, 17 },  // d13
+      { 1, 27 },  // d13
       { 3,  4 },  // d14
       { 3,  5 },  // d15
       { 0, 13 },  // d16
@@ -181,7 +184,9 @@ const HWLIB_WEAK pin_info_type & pin_info( pins name ){
    };    
    
    uint_fast8_t n = static_cast< uint_fast8_t>( name );
-   if( n >= static_cast< uint_fast8_t>( pins::SIZE_THIS_IS_NOT_A_PIN )){
+   if( n >= 
+      static_cast< uint_fast8_t>( pins::SIZE_THIS_IS_NOT_A_PIN ) 
+   ){
       HWLIB_PANIC_WITH_LOCATION;
    }
    return pin_info_array[ n ];
@@ -207,7 +212,9 @@ struct ad_pin_info_type {
 
 const HWLIB_WEAK ad_pin_info_type & ad_pin_info( ad_pins name ){
     
-   static const ad_pin_info_type ad_pin_info_array[ (int) ad_pins::AD_SIZE_THIS_IS_NOT_A_PIN ] = {
+   static const ad_pin_info_type ad_pin_info_array[ 
+      static_cast< uint_fast8_t>( ad_pins::AD_SIZE_THIS_IS_NOT_A_PIN )
+   ] = {
       {  7 },   // a0
       {  6 },   // a1
       {  5 },   // a2
@@ -223,7 +230,9 @@ const HWLIB_WEAK ad_pin_info_type & ad_pin_info( ad_pins name ){
    };
    
    uint_fast8_t n = static_cast< uint_fast8_t>( name );
-   if( n >= static_cast< uint_fast8_t>( ad_pins::AD_SIZE_THIS_IS_NOT_A_PIN )){
+   if( n >= 
+      static_cast< uint_fast8_t>( ad_pins::AD_SIZE_THIS_IS_NOT_A_PIN )
+   ){
       HWLIB_PANIC_WITH_LOCATION;
    }   
    return ad_pin_info_array[ n ];
@@ -472,6 +481,72 @@ public:
 
 };
 
+/// 36kHz output on pin chip PB25 = Arduino D2
+///
+/// This class provides a 36 kHz output on chip pin PB25 
+/// (Arduino pin D2) that can be enabled or disabled by calling
+/// set( 1 ) resp. set( 0 ).
+class d2_36kHz : public hwlib::pin_out {
+   public:
+
+   /// create the 36kHz output
+   d2_36kHz(){
+      
+      // this sets the main clock to 84 MHz 
+      hwlib::wait_ms( 1 );      
+      
+      // enable the clock to port B
+      PMC->PMC_PCER0 = 1 << ID_PIOB;
+	
+	   // disable PIO Control on PB25 and set up for Peripheral B TIOA0
+	   PIOB->PIO_PDR = PIO_PB25; 
+	   PIOB->PIO_ABSR |= PIO_PB25; 
+	
+	   // enable output on B25
+	   PIOB->PIO_OER = PIO_PB25; 
+   
+      // enable the clock to the TC0 (peripheral # 27)
+      PMC->PMC_PCER0 = 1 << ID_TC0;
+   
+      // configure TC0 channel 0 for WAVSEL=10 mode 
+      // using the main clock / 2 as source
+      // and reset on C match 
+      TC0->TC_CHANNEL[ 0 ].TC_CMR =  
+         TC_CMR_WAVE 
+         | TC_CMR_TCCLKS_TIMER_CLOCK1 
+         | TC_CMR_WAVSEL_UP_RC;   
+
+      // configure pin A match clear
+      TC0->TC_CHANNEL[ 0 ].TC_CMR |= TC_CMR_ACPC_SET | TC_CMR_ACPA_CLEAR; 
+   
+	   // set C match/clear for 36 kHz  
+	   TC0->TC_CHANNEL[ 0 ].TC_RC = 41'000'000 / 36'000;
+      
+      // set 50% duty cycle
+	   TC0->TC_CHANNEL[ 0 ].TC_RA = TC0->TC_CHANNEL[ 0 ].TC_RC / 2;
+   
+      set( 0 );
+   
+	   // enable and start 
+	   TC0->TC_CHANNEL[ 0 ].TC_CCR = TC_CCR_CLKEN | TC_CCR_SWTRG;      
+   }
+   
+   /// enable or disable the 36 kHz output
+   //
+   /// Calling set( 1 ) enables the 36 kHz output, calling set( 0 )
+   /// disables the output and makes the output low.
+   void set( bool b ) override {
+      if( b ){
+         // eable C match -> pin set
+         TC0->TC_CHANNEL[ 0 ].TC_CMR |= TC_CMR_ACPC_SET;         
+      } else {
+         // remove pin C match action
+         TC0->TC_CHANNEL[ 0 ].TC_CMR &= ~ ( 0x3 << 18);  
+      }
+   }
+   
+}; // class d2_36kHz
+
 
 #ifdef NONO
 /// pin_adc implementation for a ATSAM3X8E
@@ -496,7 +571,7 @@ public:
    
       // timing
       ADC->ADC_MR = 
-              0 << 8    //  clock prescaler
+              0 << 8    // clock prescaler
          |   15 << 16   // startup clocks
          |    3 << 20   // settling clocks
          |    3 << 24   // tracking clocks
@@ -632,12 +707,14 @@ public:
    }
 };
 
-long long int HWLIB_WEAK now_us(){
+const long long int ticks_per_us = 84;
+
+long long int HWLIB_WEAK now_ticks(){
    static bool init_done = false;
    if( ! init_done ){
       
-      // use the 12 MHz internal RC clock
-      PMC->CKGR_MOR = 0x00370028;
+      // switch to the 84 MHz crystal/PLL clock
+      sam3xa::SystemInit();
       
       SysTick->CTRL  = 0;         // stop the timer
       SysTick->LOAD  = 0xFFFFFF;  // use its as a 24-bit timer
@@ -660,23 +737,18 @@ long long int HWLIB_WEAK now_us(){
    last_low = low;
 
    // return the aggregated ticks value
-   // the counter runs at 12 MHz 
-   return ( low | high ) / 12; 
+   // the counter runs at 84 MHz 
+   return ( low | high ); 
 
 } 
 
-}; // namespace due
+long long int HWLIB_WEAK now_us(){
+   return now_ticks() / ticks_per_us;   
+}   
 
-namespace hwlib {
-
-namespace target = ::due;
+// older version, using busy-waiting at 12 MHz
+void HWLIB_WEAK wait_us_old( int_fast32_t n ){
    
-void HWLIB_WEAK wait_ns( int_fast32_t n ){
-   wait_us( n / 1000 );
-}
-
-void HWLIB_WEAK wait_us( int_fast32_t n ){
-
    // use the 12 MHz internal RC clock
    PMC->CKGR_MOR = 0x00370028;
    
@@ -700,22 +772,66 @@ void HWLIB_WEAK wait_us( int_fast32_t n ){
    );
 }
 
+}; // namespace due
+
+namespace hwlib {
+
+namespace target = ::due;
+
+auto const ticks_per_us = target::ticks_per_us;
+   
+long long int HWLIB_WEAK now_ticks(){
+   return target::now_ticks();
+}   
+
+long long int HWLIB_WEAK now_us(){
+   return target::now_us();
+}   
+
+void wait_ns( int_fast32_t n );
+void wait_us( int_fast32_t n );
+void wait_ms( int_fast32_t n );
+void uart_putc( char c );
+char uart_getc();  
+
+#endif // HWLIB_DUE_H
+
+#ifdef HWLIB_ONCE
+
+void HWLIB_WEAK wait_ns( int_fast32_t n ){
+   wait_us( n / 1000 );
+}
+
+void HWLIB_WEAK wait_us( int_fast32_t n ){
+   auto t = now_ticks();
+   t += n * ticks_per_us;
+   while( now_ticks() < t ){}
+}
+
 void HWLIB_WEAK wait_ms( int_fast32_t n ){
    while( n > 0 ){
       wait_us( 1000 );
       --n;
    }   
-}   
+}
 
 void HWLIB_WEAK uart_putc( char c ){
    static target::pin_out pin( 0, 9 );
    uart_putc_bit_banged_pin( c, pin );
 }
 
-long long int HWLIB_WEAK now_us(){
-   return target::now_us();
-}   
+bool HWLIB_WEAK uart_char_available(){
+   static target::pin_in pin( 0, 8 );
+   return ! pin.get();
+}
 
-}; //namespace hwlib   
+char HWLIB_WEAK uart_getc( ){
+   static target::pin_in pin( 0, 8 );
+   return uart_getc_bit_banged_pin( pin );
+}
 
-#endif // HWLIB_DUE_H
+#endif
+
+}; //namespace hwlib  
+
+

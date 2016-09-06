@@ -612,6 +612,19 @@ namespace hwlib {
       
    }; // class ostream  
    
+   class istream {     
+   public:        
+      virtual bool char_available() = 0;
+   
+      virtual char getc() = 0;
+        
+      /// input operator for char
+      friend istream & operator>>( istream & stream, char & x ){
+         x = stream.getc();            
+         return stream;   
+      }           
+   };
+   
    /// a bit-banged UART putc
    //
    /// This function implements a bit-banged output-only UART 
@@ -619,29 +632,78 @@ namespace hwlib {
    void HWLIB_WEAK uart_putc_bit_banged_pin( char c, pin_out & pin ){
    
    #ifdef BMPTK_TARGET
-      const auto bit_cel = ( ( 1000L * 1000L ) / BMPTK_BAUDRATE );
+      // const auto bit_cel = ( ( 1000L * 1000L ) / BMPTK_BAUDRATE );
+      const auto ticks_per_bit = ( ( 84 * 1000L * 1000L ) / BMPTK_BAUDRATE );
+      auto t = now_ticks();
+      //(void)t;
    
       pin.set( 1 );
-      wait_us( bit_cel );
+      //wait_us( 1 );
+      t += ticks_per_bit;
+      while( now_ticks() < t ){}
    
       // start bit
       pin.set( 0 );
-      wait_us( bit_cel );
+      t += ticks_per_bit;
+      while( now_ticks() < t ){}
+      // wait_us( bit_cel );
    
       // 8 data bits
       for( int i = 0; i < 8; ++i ){
          pin.set( ( c & 0x01 ) != 0x00 );
          c = c >> 1;
-         wait_us( bit_cel );
+         t += ticks_per_bit;
+         while( now_ticks() < t ){}         
+         // wait_us( bit_cel );
       }   
    
       // 2 stop bits
       pin.set( 1 );
-      wait_us( 2 * bit_cel );
+      t += 2 * ticks_per_bit;
+      while( now_ticks() < t ){}
+      // wait_us( 20 * bit_cel );
    #else
    #endif   
    
    }      
+   
+   /// a bit-banged UART char input
+   //
+   /// This function implements a bit-banged input UART pin
+   /// using the BMPTK_BAUDRATE.   
+   char HWLIB_WEAK uart_getc_bit_banged_pin( pin_in & pin ){
+      char c = 0;        
+   
+   #ifdef BMPTK_TARGET
+      const auto ticks_per_bit = ( ( 84 * 1000L * 1000L ) / BMPTK_BAUDRATE );
+      
+      // wait for start of startbit
+      while( pin.get() ){ wait_us( 1 ); }
+      auto t = now_ticks();
+      
+      // wait until halfway the first data bit
+      t += ( 3 * ticks_per_bit ) / 2;
+      while( now_ticks() < t ){}   
+      
+      // 8 data bits
+      for( int i = 0; i < 8; ++i ){
+         c = c >> 1;            
+         if( pin.get() ){
+            c = c | 0x80;                
+         }
+         
+         t += ticks_per_bit;
+         while( now_ticks() < t ){} ;
+      }   
+      
+      // stop bit
+      t += ticks_per_bit;
+      while( now_ticks() < t ){} ;   
+      
+   #else
+   #endif   
+      return c;
+   }     
    
    /// console character output function
    //
@@ -652,12 +714,33 @@ namespace hwlib {
    /// an application to provide its own definition.
    void uart_putc( char c );
    
+   /// console character input function
+   //
+   /// This is the function used for console (istream) input.
+   /// The embedded targets provide an implementation that reads
+   /// from the serial port. 
+   /// This definition is weak, which allows 
+   /// an application to provide its own definition.
+   char uart_getc();   
+   
+   bool uart_char_available();
+   
    /// \cond INTERNAL 
    class cout_using_uart_putc : public ostream {
       void putc( char c ) override {
          uart_putc( c );
       }
    };
+   
+   class cin_using_uart_getc : public istream {
+   public:   
+      bool char_available() override {
+         return uart_char_available();      
+      }
+      char getc() override {
+         return uart_getc();
+      }
+   };   
    /// \endcond    
    
 /// embedded output console
@@ -667,7 +750,9 @@ namespace hwlib {
 /// to write the characters.
 /// This definition is weak, which allows 
 /// an application to provide its own definition.
-cout_using_uart_putc HWLIB_WEAK  cout;   
+cout_using_uart_putc HWLIB_WEAK  cout;
+
+cin_using_uart_getc HWLIB_WEAK  cin;     
 
 }; // namespace hwlib
 
